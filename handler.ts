@@ -1,6 +1,7 @@
 import { APIGatewayEvent, Callback, Context, Handler } from 'aws-lambda';
 import DynamoDB = require('aws-sdk/clients/dynamodb');
 import KMS = require('aws-sdk/clients/kms');
+import crypto = require('crypto');
 
 const USERS_TABLE = process.env.USERS_TABLE as string;
 const KMS_KEY = process.env.KMS_ALIAS as string;
@@ -13,14 +14,27 @@ interface LambdaResponse {
     body: string,
 }
 
-async function kmsEncrypt(data: string) {
+function hashPassword(password: string): string {
+    return crypto.pbkdf2Sync(password, crypto.randomBytes(16), 100000, 64, 'sha512').toString();
+}
+
+async function kmsEncrypt(data: string): Promise<string> {
     console.log("Encrypting data");
     const params = {
         KeyId: KMS_KEY,
         Plaintext: data,
     }
     const encrypted_data = await kms.encrypt(params).promise().then(data => data);
-    return encrypted_data['CiphertextBlob'] as string;
+    return (encrypted_data['CiphertextBlob'] as Buffer).toString();
+}
+
+async function kmsDecrypt(data: string) {
+    console.log("Decrypting data");
+    const params = {
+        CiphertextBlob: data,
+    }
+    const encrypted_data = await kms.decrypt(params).promise().then(data => data);
+    return encrypted_data['Plaintext'] as string;
 }
 
 function lambdaResponse(code: number, body: object): LambdaResponse {
@@ -75,7 +89,8 @@ exports.registerUser = async (event: APIGatewayEvent) => {
     const username = body['username'];
     const user = await getUser(username);
     const password = body['password'];
-    const password_hash = await kmsEncrypt(password);
+    const password_hash = hashPassword(password);
+    const encrypted_password_hash = await kmsEncrypt(password_hash);
     const email = body['email'];
 
     if (user) {
@@ -95,7 +110,7 @@ exports.registerUser = async (event: APIGatewayEvent) => {
             },
             "password": {
                 // This is raw bytes
-                B: password_hash
+                B: encrypted_password_hash
             }
         },
         TableName: USERS_TABLE,
@@ -127,7 +142,7 @@ exports.loginUser = async (event: APIGatewayEvent) => {
     }
     const username = body['username'];
     const password = body['password'];
-    const password_hash = await kmsEncrypt(password);
+    const supplied_hash = hashPassword(password);
 
     let params = {
         ExpressionAttributeValues: {
@@ -138,33 +153,26 @@ exports.loginUser = async (event: APIGatewayEvent) => {
         KeyConditionExpression: "username = :v1",
         TableName: USERS_TABLE,
     };
-    return dynamodb.query(params).promise()
-        .then((data) => {
-            if (!data.Items || data.Items.length === 0) {
-                return lambdaResponse(404, {
-                    message: "User not found",
-                })
-            } else {
-                const player = data.Items[0];
-                if (player["password"]["B"] === password_hash) {
-                    return lambdaResponse(200, {
-                        message: "User logged in!",
-                        player: player,
-                    });
-                } else {
-                    return lambdaResponse(403, {
-                        message: "Login failed",
-                        player: player,
-                        hash: password_hash,
-                    });
-                }
-            }
-            
+    let data = await dynamodb.query(params).promise();
+    if (!data.Items || data.Items.length === 0) {
+        return lambdaResponse(404, {
+            message: "User not found",
         })
-        .catch((err) => {
-            return lambdaResponse(400, {
-                message: "Bad login request",
-                error: err,
+    } else {
+        const player = data.Items[0];
+        const db_encrypted_hash = player["password"]["B"] as string;
+        const db_hash = await kmsDecrypt(db_encrypted_hash);
+        if (supplied_hash === db_hash) {
+            return lambdaResponse(200, {
+                message: "User logged in!",
+                player: player,
             });
-        });
+        } else {
+            return lambdaResponse(403, {
+                message: "Login failed",
+                player: player,
+                hash: supplied_hash,
+            });
+        }
+    }
 }
