@@ -10,6 +10,7 @@ provider:
   memorySize: 128
   runtime: nodejs6.10
   environment:
+    KMS_ALIAS: ${self:service}-${opt:stage, self:provider.stage}-password-key
     USERS_TABLE: ${self:service}-${opt:stage, self:provider.stage}-users
   iamRoleStatements:
     - Effect: Allow
@@ -21,6 +22,10 @@ provider:
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
       Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.USERS_TABLE}"
+    - Effect: Allow
+      Action:
+        - kms:Encrypt
+      Resource: "arn:aws:kms:${opt:region, self:provider.region}:*:alias/${self:provider.environment.KMS_ALIAS}"
 
 functions:
   hello:
@@ -44,8 +49,22 @@ functions:
 
 resources:
   Resources:
+    KmsKey:
+      Type: AWS::KMS::Key
+      Properties:
+        Description: crawl-ssl encryption key
+        KeyPolicy:
+          Version: "2012-10-17"
+          Id: "empty-policy"
+          Statement:
+    KmsKeyAlias:
+      Type: AWS::KMS::Alias
+      Properties:
+        AliasName: ${self:provider.environment.KMS_ALIAS}
+        TargetKeyId:
+          Ref: KmsKey
     TodosDynamoDbTable:
-      Type: 'AWS::DynamoDB::Table'
+      Type: AWS::DynamoDB::Table
       Properties:
         AttributeDefinitions:
           - AttributeName: username

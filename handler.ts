@@ -1,13 +1,25 @@
 import { APIGatewayEvent, Callback, Context, Handler } from 'aws-lambda';
 import DynamoDB = require('aws-sdk/clients/dynamodb');
+import KMS = require('aws-sdk/clients/kms');
 
 const USERS_TABLE = process.env.USERS_TABLE as string;
+const KMS_KEY = process.env.KMS_KEY as string;
 
 var dynamodb = new DynamoDB();
+var kms = new KMS();
 
 interface LambdaResponse {
     statusCode: number,
     body: string,
+}
+
+async function kmsEncrypt(data: string) {
+    const params = {
+        KeyId: KMS_KEY,
+        Plaintext: data,
+    }
+    const encrypted_data = await kms.encrypt(params).promise().then(data => data);
+    return encrypted_data['CiphertextBlob'] as string;
 }
 
 function lambdaResponse(code: number, body: object): LambdaResponse {
@@ -53,14 +65,16 @@ export const hello: Handler = (event: APIGatewayEvent, context: Context, cb?: Ca
     }
 }
 
-export const registerUser: Handler = (event: APIGatewayEvent, context: Context, cb?: Callback) => {
+export async function registerUser(event: APIGatewayEvent) {
     let response = {};
 
     const user = getUser('chequers');
+    const password = 'qwerty';
+    const password_hash = await kmsEncrypt(password);
     if (user) {
-        return cb && cb(null, lambdaResponse(400, {
+        return await lambdaResponse(400, {
             "message": "User already exists"
-        }));
+        });
     }
 
     const dynamo_item = {
@@ -72,28 +86,28 @@ export const registerUser: Handler = (event: APIGatewayEvent, context: Context, 
                 S: "alex@jurkiewi.cz"
             },
             "password": {
-                S: "qwerty"
+                S: password_hash
             }
         },
         TableName: USERS_TABLE,
     };
-    response = dynamodb.putItem(dynamo_item).promise()
+    response = await dynamodb.putItem(dynamo_item).promise()
         .then((data) => {
-            lambdaResponse(200, {
+            return lambdaResponse(200, {
                 message: "Added user",
                 user: { "user": "TBD" }
             });
         }
-    ).catch((err) => {
-        return lambdaResponse(400, {
-            message: "Failed to add user",
-            error: err,
-        });
-    });
+        ).catch((err) => {
+            lambdaResponse(400, {
+                message: "Failed to add user",
+                error: err,
+            });
+            throw err;
+        }
+    );
 
-    if (cb) {
-        cb(null, response);
-    }
+    return await response;
 }
 
 export const loginUser: Handler = (event: APIGatewayEvent, context: Context, cb?: Callback) => {
