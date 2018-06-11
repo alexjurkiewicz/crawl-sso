@@ -25,7 +25,10 @@ provider:
     - Effect: Allow
       Action:
         - kms:Encrypt
-      Resource: "arn:aws:kms:${opt:region, self:provider.region}:*:*"
+      Resource:
+        Fn::GetAtt:
+          - KmsKey
+          - Arn
 
 functions:
   hello:
