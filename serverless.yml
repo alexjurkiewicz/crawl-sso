@@ -83,7 +83,7 @@ resources:
           Fn::GetAtt:
             - KmsKey
             - Arn
-    TodosDynamoDbTable:
+    DynamoUserTable:
       Type: AWS::DynamoDB::Table
       Properties:
         AttributeDefinitions:
