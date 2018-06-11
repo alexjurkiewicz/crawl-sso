@@ -8,7 +8,7 @@ plugins:
 provider:
   name: aws
   memorySize: 128
-  runtime: nodejs6.10
+  runtime: nodejs8.10
   environment:
     KMS_ALIAS: alias/${self:service}-${opt:stage, self:provider.stage}-password-key
     USERS_TABLE: ${self:service}-${opt:stage, self:provider.stage}-users
@@ -25,7 +25,7 @@ provider:
     - Effect: Allow
       Action:
         - kms:Encrypt
-      Resource: "arn:aws:kms:${opt:region, self:provider.region}:*:alias/${self:provider.environment.KMS_ALIAS}"
+      Resource: "arn:aws:kms:${opt:region, self:provider.region}:*:*"
 
 functions:
   hello:

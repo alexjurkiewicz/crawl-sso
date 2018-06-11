@@ -3,7 +3,7 @@ import DynamoDB = require('aws-sdk/clients/dynamodb');
 import KMS = require('aws-sdk/clients/kms');
 
 const USERS_TABLE = process.env.USERS_TABLE as string;
-const KMS_KEY = process.env.KMS_KEY as string;
+const KMS_KEY = process.env.KMS_ALIAS as string;
 
 var dynamodb = new DynamoDB();
 var kms = new KMS();
@@ -14,6 +14,7 @@ interface LambdaResponse {
 }
 
 async function kmsEncrypt(data: string) {
+    console.log("Encrypting data");
     const params = {
         KeyId: KMS_KEY,
         Plaintext: data,
@@ -29,8 +30,7 @@ function lambdaResponse(code: number, body: object): LambdaResponse {
     };
 }
 
-function getUser(username: string): object|null {
-    let user = null;
+async function getUser(username: string) {
     let params = {
         ExpressionAttributeValues: {
             ":v1": {
@@ -40,7 +40,7 @@ function getUser(username: string): object|null {
         KeyConditionExpression: "username = :v1",
         TableName: USERS_TABLE,
     };
-    user = dynamodb.query(params).promise().then(((data) => {
+    return await dynamodb.query(params).promise().then(((data) => {
         // We know DynamoDB will always return an array for us here
         if (data!.Items!.length !== 0) {
             return (data.Items as DynamoDB.AttributeMap[])[0];
@@ -48,7 +48,6 @@ function getUser(username: string): object|null {
             return null;
         }
     }));
-    return user;
 }
 
 export const hello: Handler = (event: APIGatewayEvent, context: Context, cb?: Callback) => {
@@ -65,16 +64,21 @@ export const hello: Handler = (event: APIGatewayEvent, context: Context, cb?: Ca
     }
 }
 
-export async function registerUser(event: APIGatewayEvent) {
+exports.registerUser = async (event: APIGatewayEvent) => {
     let response = {};
-
-    const user = getUser('chequers');
+    const user = await getUser('chequers');
     const password = 'qwerty';
     const password_hash = await kmsEncrypt(password);
+    console.log("Back from encryption");
     if (user) {
-        return await lambdaResponse(400, {
-            "message": "User already exists"
-        });
+        console.log("User already exists. Reporting this.")
+        // return lambdaResponse(400, {
+        //     "message": "User already exists"
+        // });
+        return {
+            'statusCode': 400,
+            'body': JSON.stringify({"message": "User already exists"}),
+        }
     }
 
     const dynamo_item = {
@@ -91,23 +95,25 @@ export async function registerUser(event: APIGatewayEvent) {
         },
         TableName: USERS_TABLE,
     };
+    console.log("About to try registering user")
     response = await dynamodb.putItem(dynamo_item).promise()
         .then((data) => {
+            console.log("Generating success response");
             return lambdaResponse(200, {
                 message: "Added user",
                 user: { "user": "TBD" }
             });
         }
         ).catch((err) => {
-            lambdaResponse(400, {
+            console.log("Generating failure response");
+            return lambdaResponse(400, {
                 message: "Failed to add user",
                 error: err,
             });
-            throw err;
         }
     );
-
-    return await response;
+    console.log(`Response: ${response}`);
+    return response;
 }
 
 export const loginUser: Handler = (event: APIGatewayEvent, context: Context, cb?: Callback) => {

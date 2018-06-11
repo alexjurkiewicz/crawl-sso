@@ -1,13 +1,14 @@
 {
   "compilerOptions": {
+    "target": "es2017",
+    "module": "commonjs",
     "strict": true,
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     /* "noUnusedParameters": true, */
     "sourceMap": true,
     "lib": [
-      "es5",
-      "es2015.promise",
+      "es2017",
       "dom",
       "esnext.asynciterable" // Required for aws-sdk
     ]
