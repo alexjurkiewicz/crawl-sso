@@ -10,14 +10,16 @@ interface LambdaResponse {
     body: string,
 }
 
-const lambdaResponse = (code: number, body: object) => {
+function lambdaResponse(code: number, body: object): LambdaResponse {
     return {
         'statusCode': code,
         'body': JSON.stringify(body),
-    } as LambdaResponse;
+    };
 }
 
-const getUser = (username: string) => {
+function getUser(username: string): object|null {
+    console.log(`Querying for ${username}`)
+    let user = null;
     let params = {
         ExpressionAttributeValues: {
             ":v1": {
@@ -27,19 +29,18 @@ const getUser = (username: string) => {
         KeyConditionExpression: "username = :v1",
         TableName: USERS_TABLE,
     };
-    dynamodb.query(params, function(err, data) {
-        if (err) {
-            throw err;
+    user = dynamodb.query(params).promise().then(((data) => {
+        console.log(data);
+        // We know DynamoDB will always return an array for us here
+        if (data!.Items!.length !== 0) {
+            console.log("Found user");
+            return (data.Items as DynamoDB.AttributeMap[])[0];
         } else {
-            // We know DynamoDB will always return an array for us here
-            if (data!.Items!.length === 0) {
-                return null;
-            } else {
-                console.log("Found user");
-                return (data.Items as DynamoDB.AttributeMap[])[0];
-            }
+            return null;
         }
-    });
+    }));
+    console.log(`Returning user ${user}`)
+    return user;
 }
 
 export const hello: Handler = (event: APIGatewayEvent, context: Context, cb?: Callback) => {
@@ -60,6 +61,7 @@ export const registerUser: Handler = (event: APIGatewayEvent, context: Context, 
     let response = {};
 
     const user = getUser('chequers');
+    console.log(`Queried DB for user and found ${user}`);
     if (user) {
         return cb && cb(null, lambdaResponse(400, {
             "message": "User already exists"
@@ -80,20 +82,20 @@ export const registerUser: Handler = (event: APIGatewayEvent, context: Context, 
         },
         TableName: USERS_TABLE,
     };
-    dynamodb.putItem(dynamo_item, (err, data) => {
-        if (err) {
-            console.log(err, err.stack);
-            return cb && cb(null, lambdaResponse(400, {
-                message: "Failed to add user",
-                error: err,
-            }));
-        } else {
+    response = dynamodb.putItem(dynamo_item).promise()
+        .then((data) => {
             console.log("Added user");
-            return cb && cb(null, lambdaResponse(200, {
+            lambdaResponse(200, {
                 message: "Added user",
                 user: { "user": "TBD" }
-            }));
+            });
         }
+    ).catch((err) => {
+        console.log(err, err.stack);
+        return lambdaResponse(400, {
+            message: "Failed to add user",
+            error: err,
+        });
     });
 
     if (cb) {

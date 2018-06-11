@@ -34,7 +34,7 @@ functions:
     events:
       - http:
           method: post
-          path: user
+          path: register
   login:
     handler: handler.loginUser
     events:
