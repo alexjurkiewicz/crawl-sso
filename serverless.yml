@@ -37,6 +37,9 @@ functions:
       - http:
           method: get
           path: hello
+      - http:
+          method: post
+          path: hello
   register:
     handler: handler.registerUser
     events:
