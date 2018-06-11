@@ -10,7 +10,7 @@ provider:
   memorySize: 128
   runtime: nodejs6.10
   environment:
-    KMS_ALIAS: ${self:service}-${opt:stage, self:provider.stage}-password-key
+    KMS_ALIAS: alias/${self:service}-${opt:stage, self:provider.stage}-password-key
     USERS_TABLE: ${self:service}-${opt:stage, self:provider.stage}-users
   iamRoleStatements:
     - Effect: Allow
@@ -57,12 +57,26 @@ resources:
           Version: "2012-10-17"
           Id: "empty-policy"
           Statement:
+            - Sid: "Allow anyone to describe the key"
+              Effect: "Allow"
+              Principal:
+                AWS:
+                  Fn::Join :
+                    - ''
+                    - - 'arn:aws:iam::'
+                      - Ref: AWS::AccountId
+                      - ':root'
+              Action:
+                - "kms:*"
+              Resource: "*"
     KmsKeyAlias:
       Type: AWS::KMS::Alias
       Properties:
         AliasName: ${self:provider.environment.KMS_ALIAS}
         TargetKeyId:
-          Ref: KmsKey
+          Fn::GetAtt:
+            - KmsKey
+            - Arn
     TodosDynamoDbTable:
       Type: AWS::DynamoDB::Table
       Properties:
