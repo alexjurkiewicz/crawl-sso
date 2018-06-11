@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    /* "noUnusedParameters": true, */
+    "sourceMap": true,
+    "lib": [
+      "es5",
+      "es2015.promise",
+      "dom",
+      "esnext.asynciterable" // Required for aws-sdk
+    ]
+  },
+  "exclude": [
+    "node_modules"
+  ]
+}
