@@ -65,43 +65,46 @@ export const hello: Handler = (event: APIGatewayEvent, context: Context, cb?: Ca
 }
 
 exports.registerUser = async (event: APIGatewayEvent) => {
-    let response = {};
-    const user = await getUser('chequers');
-    const password = 'qwerty';
+    // Load user details
+    let body = JSON.parse(event['body'] as string);
+    if (!('username' in body) || !('password' in body) || !('email' in body)) {
+        return lambdaResponse(400, {
+            "message": "Registration requires username, password, and email."
+        });
+    }
+    const username = body['username'];
+    const user = await getUser(username);
+    const password = body['password'];
     const password_hash = await kmsEncrypt(password);
-    console.log("Back from encryption");
+    const email = body['email'];
+
     if (user) {
         console.log("User already exists. Reporting this.")
-        // return lambdaResponse(400, {
-        //     "message": "User already exists"
-        // });
-        return {
-            'statusCode': 400,
-            'body': JSON.stringify({"message": "User already exists"}),
-        }
+        return lambdaResponse(400, {
+            "message": "User already exists"
+        });
     }
 
     const dynamo_item = {
         Item: {
             "username": {
-                S: "chequers"
+                S: username
             },
             "email": {
-                S: "alex@jurkiewi.cz"
+                S: email
             },
             "password": {
-                S: password_hash
+                // This is raw bytes
+                B: password_hash
             }
         },
         TableName: USERS_TABLE,
     };
-    console.log("About to try registering user")
-    response = await dynamodb.putItem(dynamo_item).promise()
+    return await dynamodb.putItem(dynamo_item).promise()
         .then((data) => {
             console.log("Generating success response");
             return lambdaResponse(200, {
-                message: "Added user",
-                user: { "user": "TBD" }
+                message: "Added user"
             });
         }
         ).catch((err) => {
@@ -112,8 +115,6 @@ exports.registerUser = async (event: APIGatewayEvent) => {
             });
         }
     );
-    console.log(`Response: ${response}`);
-    return response;
 }
 
 export const loginUser: Handler = (event: APIGatewayEvent, context: Context, cb?: Callback) => {
