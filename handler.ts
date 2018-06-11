@@ -18,7 +18,6 @@ function lambdaResponse(code: number, body: object): LambdaResponse {
 }
 
 function getUser(username: string): object|null {
-    console.log(`Querying for ${username}`)
     let user = null;
     let params = {
         ExpressionAttributeValues: {
@@ -30,16 +29,13 @@ function getUser(username: string): object|null {
         TableName: USERS_TABLE,
     };
     user = dynamodb.query(params).promise().then(((data) => {
-        console.log(data);
         // We know DynamoDB will always return an array for us here
         if (data!.Items!.length !== 0) {
-            console.log("Found user");
             return (data.Items as DynamoDB.AttributeMap[])[0];
         } else {
             return null;
         }
     }));
-    console.log(`Returning user ${user}`)
     return user;
 }
 
@@ -61,7 +57,6 @@ export const registerUser: Handler = (event: APIGatewayEvent, context: Context, 
     let response = {};
 
     const user = getUser('chequers');
-    console.log(`Queried DB for user and found ${user}`);
     if (user) {
         return cb && cb(null, lambdaResponse(400, {
             "message": "User already exists"
@@ -84,14 +79,12 @@ export const registerUser: Handler = (event: APIGatewayEvent, context: Context, 
     };
     response = dynamodb.putItem(dynamo_item).promise()
         .then((data) => {
-            console.log("Added user");
             lambdaResponse(200, {
                 message: "Added user",
                 user: { "user": "TBD" }
             });
         }
     ).catch((err) => {
-        console.log(err, err.stack);
         return lambdaResponse(400, {
             message: "Failed to add user",
             error: err,
@@ -116,7 +109,6 @@ export const loginUser: Handler = (event: APIGatewayEvent, context: Context, cb?
     };
     dynamodb.query(params, function(err, data) {
         if (err) {
-            console.log(err, err.stack);
             response = lambdaResponse(400, {
                 message: "Bad login request",
                 error: err,
