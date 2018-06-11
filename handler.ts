@@ -117,38 +117,54 @@ exports.registerUser = async (event: APIGatewayEvent) => {
     );
 }
 
-export const loginUser: Handler = (event: APIGatewayEvent, context: Context, cb?: Callback) => {
-    let response = {};
+exports.loginUser = async (event: APIGatewayEvent) => {
+    // Load user details
+    let body = JSON.parse(event['body'] as string);
+    if (!('username' in body) || !('password' in body)) {
+        return lambdaResponse(400, {
+            "message": "Login requires username, and password."
+        });
+    }
+    const username = body['username'];
+    const password = body['password'];
+    const password_hash = await kmsEncrypt(password);
+
     let params = {
         ExpressionAttributeValues: {
             ":v1": {
-                S: "chequers"
+                S: username
             }
         },
         KeyConditionExpression: "username = :v1",
         TableName: USERS_TABLE,
     };
-    dynamodb.query(params, function(err, data) {
-        if (err) {
-            response = lambdaResponse(400, {
-                message: "Bad login request",
-                error: err,
-            });
-        } else {
-            // We know DynamoDB will always return an array for us here
-            if (data!.Items!.length === 0) {
-                response = lambdaResponse(404, {
+    return dynamodb.query(params).promise()
+        .then((data) => {
+            if (!data.Items || data.Items.length === 0) {
+                return lambdaResponse(404, {
                     message: "User not found",
                 })
             } else {
-                response = lambdaResponse(200, {
-                    message: "User logged in!",
-                });
+                const player = data.Items[0];
+                if (player["password"]["B"] === password_hash) {
+                    return lambdaResponse(200, {
+                        message: "User logged in!",
+                        player: player,
+                    });
+                } else {
+                    return lambdaResponse(403, {
+                        message: "Login failed",
+                        player: player,
+                        hash: password_hash,
+                    });
+                }
             }
-        }
-    });
-
-    if (cb) {
-        cb(null, response);
-    }
+            
+        })
+        .catch((err) => {
+            return lambdaResponse(400, {
+                message: "Bad login request",
+                error: err,
+            });
+        });
 }
